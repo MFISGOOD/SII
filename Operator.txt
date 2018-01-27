@@ -1,0 +1,7 @@
+Operator Precedence
+
+Category 	Operators
+Multiplicative 	*, /, %
+Additive 	+, -
+Assignment 	=
+Function 	=>
