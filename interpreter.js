@@ -21,8 +21,8 @@ Interpreter.prototype.input = function(expr)
     	this.functionDefinition(tokens);
     } else{
            var parse= this._expresion(tokens); 
-           this.evaluate(parse);
-           return parse;
+          return(this.evaluate(parse));
+         
     }
 };
 
@@ -85,15 +85,20 @@ Interpreter.prototype._expresion = function(tokens){
    let operations=[];
    operations.push(factor);
       
-   if(match = /[ + | \- | \/ | * | %]/.exec(tokens[0])){
+   if(match = /^[ + | \- | \/ | * | %]/.exec(tokens[0])){
             tokens.shift();
             operations.push(match[0]);
             let right = this._expresion(tokens);
-            right = typeof(right) === 'object' && 'value' in right ? right.value : right;
-            operations.push(...right);
+            right = typeof(right) === 'object' && 'value' in right  && Array.isArray(right.value)? right.value : right;
+           if(Array.isArray(right)){
+              operations.push(...right);
+           }else{
+              operations.push(right);
+           }           
             return {type:'apply' ,value: operations};
    } else{
-   	 return operations;  
+   	 return factor;  
+
    }
 }
 
@@ -123,13 +128,61 @@ Interpreter.prototype.evaluate = function (expr) {
 	    }
 
 	    case "apply":{
-	    	this.parse.push(this.evaluate(expr.value[0]));
-	    	this.parse.push(expr.value[1]);
-	    	this.parse.push(this.evaluate(expr.value[0]));
+	    	let reduce = expr.value.map(function(el){
+                           if(/^[ + | \- | \/ | * | %]/.exec(el)){
+                           	return el;
+                           }else{
+                           	return this.evaluate(el)
+                           }
+	    	}.bind(this));
+	    	return _reduce(reduce)
 	    } 
 	     
   }
 }
+function _reduce(arr){
+	let result = [];
+	if(arr && Array.isArray(arr)){
+		arr=arr.filter(el => el !== true)
+		let find = 0;
+      arr.forEach((value,index) => {  	 
+          switch(value){
+          	    case '*' : find = '*'; break;
+				case '/' : find = '/' ; break;
+				default :  {
+					if(find){
+						switch(find){
+							case  '*' : result[result.length-1]= value * result[result.length-1] ;find =0; break;
+							case  '/' : result[result.length-1]= result[result.length-1]/value  ;find=0; break;
+						}
+					}else{
+						if(Array.isArray(value)){
+							result.push( _reduce(value))
+						}else{
+							result.push(value);
+						}
+						
+					}
+				}
+		   }
+      });
+	}
+    return result.filter(el => el !== true).reduce((acc,next)=>{
+    	if(acc.left === null){
+    		acc.left=next;
+    	}else{
+    		if(acc.op === null){
+    			acc.op = next;
+    		}else if(acc.right === null){
+    				acc.right = next;
+    				acc.left = acc.op === '+' ? acc.left + acc.right : (acc.op === '-' ? acc.left - acc.right : undefined );
+    				acc.right = null;
+    				acc.op =null;
+    		}
+    	}
+    	return acc;
+        },{left:null,right:null,op:null}).left;
+    }
 
 Interpreter.prototype.functionDefinition = function(tokens){
 	var save = tokens.join(' ');
