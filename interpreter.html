@@ -38,15 +38,29 @@
  <script>
  	var report =(function(){
  	      let list = document.getElementById('report');
-	      return function log(message,compare){
+	      return function log(message,compare,...args){
 
 	      	          if(typeof(compare) !== 'string' && !(compare instanceof String) ){
 	      	          	    compare= JSON.stringify(compare);
 	      	          }
 	      	         let item= document.createElement('li');
 	      	          if(typeof(message) !== 'string' && !(message instanceof String) ){
+	      	          	    if(typeof(message) === 'function'){
+	      	          	    	try{
+	      	          	              let msg;
+	      	          	              if(args && args.length > 0)
+	      	          	    	     	msg = message(...args);
+	      	          	    	    else
+                                                    msg = message();
+	      	          	    	    log(msg,compare);	
+	      	          	    	}catch(err){
+                                              log(err.message,compare);
+	      	          	    	}  
+	      	          	    	return;         
+	      	          	    }
+
 	      	          	    item.innerText = JSON.stringify(message);
-	      	          }else{
+	      	          }else {
 	      	          	    item.innerText = message;
 	      	          }          
 	      	         item.className += (compare || compare === 0) ? (compare === item.innerText ? 'pass' : ( item.innerText = `expected : ${compare} got : ${JSON.stringify(message)}` ,'fail') ): 'title';

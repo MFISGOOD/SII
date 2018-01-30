@@ -16,11 +16,14 @@ Interpreter.prototype.tokenize = function (program)
 
 Interpreter.prototype.input = function(expr)
 {
+   if((!expr && expr != '') || !(typeof(expr) === 'string' || expr instanceof String) ) throw new SyntaxError(`invalid expresion ${expr}`);
+   if(expr.trim() === "") return '';	
     var tokens = this.tokenize(expr);
     if(tokens.length > 0 && tokens[0] === 'fn'){
     	this.functionDefinition(tokens);
     } else{
            var parse= this._expresion(tokens); 
+           // console.log(parse);
           return(this.evaluate(parse));
          
     }
@@ -31,7 +34,7 @@ Interpreter.prototype.unit = function(tokens)
 {
     	let  match, expr;  
     	let token =tokens.shift();
-    	if (match = /\d*\.?\d+/.exec(token))
+    	if (match = /^\d*\.?\d+/.exec(token))
               expr = {type: "value", value: parseFloat(match[0])};  
           else if(match = /^[a-zA-z | _ ][a-zA-z | _ | \d]*/.exec(token))
               expr = {type: "identifier", name: match[0]}; 
@@ -50,11 +53,11 @@ Interpreter.prototype.factor =function(tokens){
              tokens.shift();
              return {type : 'assignment',left :unit.name , right: this._expresion(tokens)} 
           }  
-       	if( !(/[ + | \- | \/ | * | %]/.exec( tokens[0]))  &&  tokens[0] !== ')' ){
+       	if( !(/^[ + | \- | \/ | * | %]/.exec( tokens[0]))  &&  tokens[0] !== ')' && unit.name in this.functions){
             let expr = this._expresion(tokens);
        		let args = [];
        		while (expr){
-       			args.push(expr);
+       			args.push(this.evaluate(expr)); //argument is immediately evaluated
        			expr = this._expresion(tokens);
        		}
                       return {type : 'function-call',name :unit.name , args: args} 
@@ -98,29 +101,47 @@ Interpreter.prototype._expresion = function(tokens){
             return {type:'apply' ,value: operations};
    } else{
    	 return factor;  
-
    }
 }
 
-Interpreter.prototype.evaluate = function (expr) {
+Interpreter.prototype.evaluate = function (expr,localScope) {
   switch(expr.type) {
 	    case "value":
 	      return expr.value;
-	    case "variable":
-	      if (expr.name in this.vars)
-	        return this.vars[expr.name];
-	      else
-	        throw new ReferenceError("Undefined variable: " +
+	    case "variable":{
+	    	if(localScope && expr.name in localScope){ 
+	                 return localScope[expr.name];	
+	    	}
+	    	if (expr.name in this.vars)
+	              return this.vars[expr.name];
+	          else
+	               throw new ReferenceError("Undefined variable: " +
 	                                 expr.name);
-	    case "function-call":
-	      if (expr.name in this.functions)
-	        return apply(null, expr.args.map(function(arg) {
-	            return evaluate(arg);
-	        }));
-	      else
-	        throw new ReferenceError("Undefined function: " +
+	    }
+	      
+	    case "function-call":{
+	    	if (expr.name in this.functions){
+	    	       if(expr.args.length !==  this.functions[expr.name].args.length)
+	    	       	throw new SyntaxError("Wrong number of arguments");
+	    	       let localScope = {};
+                            for(key in this.functions[expr.name].localScope){
+	                               if(expr.args.length > 0){
+	                               	   localScope[key] = expr.args.shift();
+	                               }else{
+	                               	 break;
+	                               }
+                            } 
+                            return this.evaluate(this.functions[expr.name].body, localScope);                 
+	    	}else{
+	    		throw new ReferenceError("Undefined function: " +
 	                                 expr.name);
+	    	}       
+	    }     
 	    case 'assignment' : {
+	    	if(localScope){ 
+	                 localScope[expr.left] = this.evaluate(expr.right,localScope);    
+	                return   localScope[expr.left];
+	    	 }
 	    	 if(expr.left in this.functions)
 	    	 	throw new ReferenceError(`${expr.left} is a function`);
 	            this.vars[expr.left] = this.evaluate(expr.right);    
@@ -132,7 +153,11 @@ Interpreter.prototype.evaluate = function (expr) {
                            if(/^[ + | \- | \/ | * | %]/.exec(el)){
                            	return el;
                            }else{
-                           	return this.evaluate(el)
+                           	if(localScope){
+                                   return this.evaluate(el,localScope)
+                           	}else{
+                           	   return this.evaluate(el)	
+                           	}                        	
                            }
 	    	}.bind(this));
 	    	return _reduce(reduce)
@@ -147,23 +172,25 @@ function _reduce(arr){
 		let find = 0;
       arr.forEach((value,index) => {  	 
           switch(value){
-          	    case '*' : find = '*'; break;
-				case '/' : find = '/' ; break;
-				default :  {
-					if(find){
-						switch(find){
-							case  '*' : result[result.length-1]= value * result[result.length-1] ;find =0; break;
-							case  '/' : result[result.length-1]= result[result.length-1]/value  ;find=0; break;
-						}
-					}else{
-						if(Array.isArray(value)){
-							result.push( _reduce(value))
-						}else{
-							result.push(value);
-						}
-						
+      	                     case '*' : find = '*'; break;
+			case '/' : find = '/' ; break;
+			case '%' : find = '%' ; break;
+			default :  {
+				if(find){
+					switch(find){
+						case  '*' : result[result.length-1]= value * result[result.length-1] ;find =0; break;
+						case  '/' : result[result.length-1]= result[result.length-1]/value  ;find=0; break;
+						case  '%' : result[result.length-1]= result[result.length-1]%value  ;find=0; break;
 					}
+				}else{
+					if(Array.isArray(value)){
+						result.push( _reduce(value))
+					}else{
+						result.push(value);
+					}
+					
 				}
+			}
 		   }
       });
 	}
@@ -194,7 +221,7 @@ Interpreter.prototype.functionDefinition = function(tokens){
 	if(token && token !== 'fn')
 		throw new SyntaxError("Unexpected syntax: " + token);
            token = tokens.shift() ;
-           if ( token && /^[a-zA-z | _ ][a-zA-z | _ | \d]*/.exec(token) && token != 'fn' && !(token in this.functions)){
+           if ( token && /^[a-zA-z | _ ][a-zA-z | _ | \d]*/.exec(token) && token != 'fn'){
               fn_name = token;	
               if(fn_name in this.vars)
               	throw new SyntaxError(`${fn_name} is a variable.`);
@@ -210,11 +237,15 @@ Interpreter.prototype.functionDefinition = function(tokens){
                 else
                     throw new SyntaxError("Unexpected syntax: " + token);   
                 token = tokens.shift() ;
-                if(token === '=>') fn_operator = token;
+               
            } 
-           fn_body = this.expresion(tokens);
+           fn_operator = token; 
+           if(fn_operator !== '=>') throw new SyntaxError("Unexpected syntax: " + save);
+           fn_body = this._expresion(tokens);
            if(fn_name && fn_operator && fn_body){
-              this.functions[fn_name] = {args : args , body : fn_body};	
+              let scope ={};
+              args.forEach(arg => scope[arg]=undefined);
+              this.functions[fn_name] = {args : args , body : fn_body,localScope:scope};	
            }else{
               throw new SyntaxError("Unexpected syntax: " + save);	
            }            
