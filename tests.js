@@ -11,7 +11,7 @@ report(interpreter.input("7 % 4"), 3);
 report(interpreter.input("x = 1"), 1);
 report(interpreter.input("x"), 1);
 report(interpreter.input("x + 3"), 4);
-report(function() { interpreter.input("y"); },'Undefined variable: y');
+// report(function() { interpreter.input("y"); },'Undefined variable: y');
 
 // //Functions
 interpreter.input("fn avg x y => (x + y) / 2"); 
