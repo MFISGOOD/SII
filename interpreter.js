@@ -44,7 +44,7 @@ Interpreter.prototype.unit = function(tokens)
           throw new SyntaxError("Unexpected syntax: " + token);
           return expr;
 }
-Interpreter.prototype.factor =function(tokens){
+Interpreter.prototype.factor =function(tokens,fn=false){
    let unit = this.unit(tokens);
    switch(unit.type){
        case 'value' : {
@@ -53,18 +53,22 @@ Interpreter.prototype.factor =function(tokens){
        case 'identifier' : {
        	 if(tokens[0] == "="){
              tokens.shift();
-             return {type : 'assignment',left :unit.name , right: this._expresion(tokens)} 
+             return {type : 'assignment',left :unit.name , right: this._expresion(tokens,false,false,false,true)} 
           }  
        	if( !(/^[ + | \- | \/ | * | %]/.exec( tokens[0]))  &&  tokens[0] !== ')' && unit.name in this.functions){
-            let expr = this._expresion(tokens,false,true);
-       		let args = [];
-       		while (expr){
-       			args.push(this.evaluate(expr)); //argument is immediately evaluated
-       			expr = this._expresion(tokens,false,true);
+            let nbreOfArguments= this.functions[unit.name].args.length;
+            let args = [];
+            if(nbreOfArguments === 0) return {type : 'function-call',name :unit.name , args: args} 
+            let expr ;
+       		while (nbreOfArguments && (expr = this._expresion(tokens,false,true,false,false,true))){
+       			args.push(expr); //argument is immediately evaluated
+       			--nbreOfArguments;
+       			console.log(expr);
        		}
-                      return {type : 'function-call',name :unit.name , args: args} 
-       	  }
-            	    
+       		
+       		args= args.map(el => this.evaluate(el));
+                     return {type : 'function-call',name :unit.name , args: args} 
+       	  }       	    
           else {
        	    return {type : 'variable', name : unit.name };  
        	}
@@ -75,8 +79,11 @@ Interpreter.prototype.factor =function(tokens){
        	           if(tokens.length === 0 || tokens[0] != ')')
        	                  throw new SyntaxError("Unexpected syntax: ");           
        	           tokens.shift();
-       	           // if(expr.type === 'apply')
-       	           //        console.log(this.evaluate(expr));
+       	         if(!fn && expr.type === 'apply'){ 	  
+       	               expr.value=this.evaluate(expr);
+       	               expr.type = 'value';
+       	          }
+       	              
                  return expr;  
        }
        default : throw new SyntaxError(`Unexpected token ${tokens[0]}`);
@@ -85,9 +92,9 @@ Interpreter.prototype.factor =function(tokens){
 }
 
 
-Interpreter.prototype._expresion = function(tokens,delimiter = false,argument=false){
+Interpreter.prototype._expresion = function(tokens,delimiter = false,argument=false,fn=false,assignment=false,function_call=false){
    if (tokens.length === 0) return null;
-   let factor = this.factor(tokens);
+   let factor = this.factor(tokens,fn);
    let match ;
    let operations=[];
    operations.push(factor);
@@ -95,15 +102,15 @@ Interpreter.prototype._expresion = function(tokens,delimiter = false,argument=fa
    if(match = /^[ + | \- | \/ | * | %]/.exec(tokens[0])){
             tokens.shift();
             operations.push(match[0]);
-            let right = this._expresion(tokens,delimiter);
+            let right = this._expresion(tokens,delimiter,argument,fn,assignment);
             right = typeof(right) === 'object' && 'value' in right  && Array.isArray(right.value)? right.value : right; 
            if(Array.isArray(right)){
               operations.push(...right);
            }else{
               operations.push(right);
            }           
-            return {type:'apply' ,value: operations,delimiter:delimiter};
-   }else if(argument){
+            return {type:'apply' ,value: operations,delimiter:delimiter,argument:argument,fn:fn,assignment:assignment};
+   }else if(argument || assignment || function_call){
    	 return factor;
    }else{
          throw new SyntaxError(`Unexpected token ${tokens[0]}`);  
@@ -238,8 +245,10 @@ Interpreter.prototype.functionDefinition = function(tokens){
            token = tokens.shift() ;
            let args =[];
            while (tokens.length > 0 && token !== '=>'){
-                if (/^[a-zA-z | _ ][a-zA-z | _ | \d]*/.exec(token))
-                	args.push(token);
+                if (/^[a-zA-z | _ ][a-zA-z | _ | \d]*/.exec(token)){
+                	if(args.find(arg => arg === token)) throw new Error("Declaration includes duplicate variable names");
+                	 args.push(token);    	
+                }
                 else
                     throw new SyntaxError("Unexpected syntax: " + token);   
                 token = tokens.shift() ;
@@ -247,12 +256,20 @@ Interpreter.prototype.functionDefinition = function(tokens){
            } 
            fn_operator = token; 
            if(fn_operator !== '=>') throw new SyntaxError("Unexpected syntax: " + save);
-           fn_body = this._expresion(tokens);
+           let withFnBody = Array.from(tokens);
+           fn_body = this._expresion(tokens,false,false,true);
+           let funBody = withFnBody.copyWithin(withFnBody.length - tokens.length)
+                                                 .filter(el => /^[a-zA-z | _ ][a-zA-z | _ | \d]*/.exec(el))
+           if(funBody.length > 0) {
+                funBody=funBody.filter(el => args.every(arg => arg !== el));
+                if(funBody.length !== 0) throw new Error("function's expression contains invalid variable names");
+           }                                    
+          
            if(fn_name && fn_operator && fn_body){
               let scope ={};
               args.forEach(arg => scope[arg]=undefined);
               this.functions[fn_name] = {args : args , body : fn_body,localScope:scope};
-              return '\'\'';	
+              return "";	
            }else{
               throw new SyntaxError("Unexpected syntax: " + save);	
            }            
