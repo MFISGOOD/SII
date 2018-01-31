@@ -5,6 +5,9 @@ fn-name         ::= identifier
 fn-operator     ::= '=>'
 fn-keyword      ::= 'fn'
 
+factor | factor operator factor
+factor | expression op expression op factor | expression op expression
+
 expression      ::= factor | expression operator expression
 factor          ::= number | identifier | assignment | '(' expression ')' | function-call
 assignment      ::= identifier '=' expression
@@ -20,6 +23,3 @@ number          ::= { digit } [ '.' digit { digit } ]
 letter          ::= 'a' | 'b' | ... | 'y' | 'z' | 'A' | 'B' | ... | 'Y' | 'Z'
 digit           ::= '0' | '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9'
 
-number ='/\d*\.?\d+/'
-identifier = '/^[a-zA-z | _ ][a-zA-z | _ | \d]*/'
-operator = '/[+ | - | \/ | * ]/';

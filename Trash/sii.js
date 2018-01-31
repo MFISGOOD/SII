@@ -264,8 +264,3 @@ Interpreter.prototype.functionDefinition = function(tokens){
           throw new SyntaxError("Unexpected syntax: " + save);  
     }            
 }
-
-
-
-
-
